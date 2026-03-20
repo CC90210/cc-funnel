@@ -1,75 +1,138 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 
-// --- Email templates per interest ---
-function buildWelcomeEmail(name: string, interests: string[], body: Record<string, string>) {
+// --- Claude-powered personalized email ---
+async function generatePersonalizedEmail(
+  name: string,
+  interests: string[],
+  details: Record<string, string>
+): Promise<{ subject: string; body: string }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return fallbackEmail(name, interests, details);
+  }
+
   const firstName = name.split(" ")[0];
 
-  const sections: string[] = [];
+  const contextParts: string[] = [];
+  if (interests.includes("ai")) {
+    contextParts.push(`They're interested in AI automation for their business.`);
+    if (details.businessName) contextParts.push(`Business name: ${details.businessName}`);
+    if (details.businessType) contextParts.push(`Business type: ${details.businessType}`);
+    if (details.biggestPain) contextParts.push(`Their biggest pain point: "${details.biggestPain}"`);
+  }
+  if (interests.includes("music")) {
+    contextParts.push(`They want to book a DJ.`);
+    if (details.eventType) contextParts.push(`Event type: ${details.eventType}`);
+    if (details.eventDate) contextParts.push(`Date: ${details.eventDate}`);
+    if (details.musicVibe) contextParts.push(`Vibe they want: "${details.musicVibe}"`);
+  }
+  if (interests.includes("brand")) {
+    contextParts.push(`They want help building their personal brand.`);
+    if (details.brandGoal) contextParts.push(`Their goal: ${details.brandGoal}`);
+    if (details.audience) contextParts.push(`Target audience: ${details.audience}`);
+    if (details.currentFollowing) contextParts.push(`Current following: ${details.currentFollowing}`);
+  }
+
+  const prompt = `You are Conaugh McKenna (CC), a 22-year-old entrepreneur who runs OASIS AI Solutions (an AI automation agency), DJs events, and coaches people on personal branding. You're authentic, warm, direct, and never salesy. You talk like you're texting a friend — casual but sharp.
+
+Someone named ${firstName} just filled out your funnel form. Here's what they told you:
+${contextParts.join("\n")}
+
+Write a SHORT, personalized email to ${firstName}. Rules:
+- Sound like YOU, not a corporation. No "Dear" or "Thank you for your interest."
+- Reference their SPECIFIC details (business name, pain point, event type, etc.)
+- Tell them exactly what you're going to do for them and when
+- If AI interest: tell them you'll send a personalized AI audit within 48 hours
+- If music interest: tell them you'll reach out to discuss their event
+- If brand interest: tell them you'll DM them on Instagram to book a 15-min strategy session
+- Keep it under 150 words
+- End with "— CC"
+- No emojis in the body text
+
+Return ONLY a JSON object with "subject" and "body" keys. The body should be plain text (not HTML). No markdown, no code fences, just the JSON.`;
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 400,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      console.error("Claude API error:", res.status);
+      return fallbackEmail(name, interests, details);
+    }
+
+    const data = await res.json();
+    const text = data.content?.[0]?.text || "";
+    const parsed = JSON.parse(text);
+    return { subject: parsed.subject, body: parsed.body };
+  } catch (e) {
+    console.error("Claude generation failed:", e);
+    return fallbackEmail(name, interests, details);
+  }
+}
+
+// Fallback if Claude API is down
+function fallbackEmail(
+  name: string,
+  interests: string[],
+  details: Record<string, string>
+): { subject: string; body: string } {
+  const firstName = name.split(" ")[0];
 
   if (interests.includes("ai")) {
-    sections.push(`
-      <div style="background:#1a1a1a;border-radius:12px;padding:20px;margin-bottom:16px;border-left:3px solid #e8c547">
-        <h3 style="color:#e8c547;margin:0 0 8px">⚡ Your Free AI Audit</h3>
-        <p style="color:#ccc;margin:0">I'm personally reviewing <strong>${body.businessName || "your business"}</strong> right now. You'll have a full breakdown of what I'd automate first — and exactly how much time it'll save you — in your inbox within 48 hours.</p>
-        ${body.biggestPain ? `<p style="color:#999;margin:8px 0 0;font-size:14px">You mentioned: "${body.biggestPain}" — that's the first thing I'm looking at.</p>` : ""}
-      </div>
-    `);
+    return {
+      subject: `${firstName}, your AI audit is coming`,
+      body: `Hey ${firstName},\n\nGot your info — I'm reviewing ${details.businessName || "your business"} right now. You'll have a full breakdown of what I'd automate first in your inbox within 48 hours.\n\n${details.biggestPain ? `You mentioned "${details.biggestPain}" — that's the first thing I'm looking at.\n\n` : ""}Talk soon,\n— CC`,
+    };
   }
-
   if (interests.includes("music")) {
-    sections.push(`
-      <div style="background:#1a1a1a;border-radius:12px;padding:20px;margin-bottom:16px;border-left:3px solid #e8c547">
-        <h3 style="color:#e8c547;margin:0 0 8px">🎧 DJ Booking</h3>
-        <p style="color:#ccc;margin:0">I've got your event details${body.eventType ? ` (${body.eventType})` : ""}${body.eventDate ? ` around ${body.eventDate}` : ""}. I'll reach out within 24 hours to lock in availability and talk vibe.</p>
-        ${body.musicVibe ? `<p style="color:#999;margin:8px 0 0;font-size:14px">Vibe you're going for: "${body.musicVibe}" — love it.</p>` : ""}
-      </div>
-    `);
+    return {
+      subject: `${firstName}, let's talk about your event`,
+      body: `Hey ${firstName},\n\nGot your details${details.eventType ? ` for your ${details.eventType}` : ""}${details.eventDate ? ` around ${details.eventDate}` : ""}. I'll reach out within 24 hours to talk availability and vibe.\n\n${details.musicVibe ? `"${details.musicVibe}" — I already have some ideas.\n\n` : ""}— CC`,
+    };
   }
+  return {
+    subject: `${firstName}, let's book your strategy session`,
+    body: `Hey ${firstName},\n\nI'm reaching out about your free brand strategy session. ${details.brandGoal ? `You said your goal is to ${details.brandGoal}` : "I've got some ideas"} — I'll DM you on Instagram to find a time this week.\n\n15 minutes, zero pitch, and you'll walk away with something you can use immediately.\n\n— CC`,
+  };
+}
 
-  if (interests.includes("brand")) {
-    sections.push(`
-      <div style="background:#1a1a1a;border-radius:12px;padding:20px;margin-bottom:16px;border-left:3px solid #e8c547">
-        <h3 style="color:#e8c547;margin:0 0 8px">🔥 Free Brand Strategy Session</h3>
-        <p style="color:#ccc;margin:0">I'll DM you on Instagram${body.audience ? ` — since you're targeting ${body.audience}` : ""} to find a time for your 15-minute strategy call. No pitch, just value.</p>
-        ${body.brandGoal ? `<p style="color:#999;margin:8px 0 0;font-size:14px">Your goal: "${body.brandGoal}" — I've got some ideas already.</p>` : ""}
-      </div>
-    `);
-  }
+// --- Format email as HTML ---
+function wrapInHtml(body: string): string {
+  const htmlBody = body
+    .split("\n\n")
+    .map((p) => `<p style="color:#ccc;line-height:1.6;margin:0 0 16px">${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
 
-  const html = `
+  return `
     <div style="background:#0a0a0a;padding:40px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
       <div style="max-width:520px;margin:0 auto">
-        <h1 style="color:#faf9f5;font-size:24px;margin:0 0 8px">You're in, ${firstName}.</h1>
-        <p style="color:#888;font-size:16px;margin:0 0 24px">Here's what happens next:</p>
-
-        ${sections.join("")}
-
-        <div style="margin-top:32px;padding-top:24px;border-top:1px solid #2a2a2a">
-          <p style="color:#888;font-size:14px;margin:0">Talk soon,</p>
-          <p style="color:#faf9f5;font-size:16px;font-weight:600;margin:4px 0 0">— CC McKenna</p>
-          <p style="color:#666;font-size:12px;margin:8px 0 0">Founder, OASIS AI Solutions</p>
+        ${htmlBody}
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid #2a2a2a">
+          <p style="color:#666;font-size:12px;margin:0">Conaugh McKenna | OASIS AI Solutions</p>
         </div>
       </div>
     </div>
   `;
-
-  const subjectMap: Record<string, string> = {
-    ai: "Your free AI audit is on its way",
-    music: "Let's lock in your event",
-    brand: "Your brand strategy session",
-  };
-  const subject = subjectMap[interests[0]] || "You're in — here's what's next";
-
-  return { subject, html };
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { interests, name, email, instagram } = body;
+    const { interests, name, email, phone, instagram } = body;
 
-    // Run all 3 actions in parallel for speed
+    // Run all actions in parallel
     const promises: Promise<unknown>[] = [];
 
     // 1. Store in Supabase
@@ -89,6 +152,7 @@ export async function POST(request: Request) {
           body: JSON.stringify({
             name,
             email,
+            phone: phone || null,
             instagram_handle: instagram || null,
             interests,
             business_name: body.businessName || null,
@@ -106,7 +170,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Notify CC via Telegram
+    // 2. Notify CC via Telegram (with phone number now included)
     const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -140,9 +204,10 @@ export async function POST(request: Request) {
       const message =
         `🚀 <b>New Funnel Lead</b>\n\n` +
         `<b>${name}</b>\n` +
-        `${email}\n` +
-        `${instagram ? `@${instagram}` : "(no IG)"}\n\n` +
-        `Interested in: ${interestText}` +
+        `📧 ${email}\n` +
+        `${phone ? `📱 ${phone}\n` : ""}` +
+        `${instagram ? `📸 @${instagram}\n` : ""}` +
+        `\nInterested in: ${interestText}` +
         details;
 
       promises.push(
@@ -161,30 +226,40 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Send personalized welcome email to the lead
+    // 3. Generate personalized email with Claude + send via Gmail
     const gmailUser = process.env.GMAIL_USER;
     const gmailPass = process.env.GMAIL_APP_PASSWORD;
 
     if (gmailUser && gmailPass && email) {
-      const { subject, html } = buildWelcomeEmail(name, interests, body);
+      const emailPromise = generatePersonalizedEmail(name, interests, body).then(
+        ({ subject, body: emailBody }) => {
+          const transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: { user: gmailUser, pass: gmailPass },
+          });
 
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: gmailUser, pass: gmailPass },
-      });
-
-      promises.push(
-        transporter.sendMail({
-          from: `"Conaugh McKenna" <${gmailUser}>`,
-          to: email,
-          subject,
-          html,
-        })
+          return transporter.sendMail({
+            from: `"Conaugh McKenna" <${gmailUser}>`,
+            to: email,
+            subject,
+            text: emailBody,
+            html: wrapInHtml(emailBody),
+          });
+        }
       );
+
+      promises.push(emailPromise);
     }
 
     // Execute all in parallel — don't let one failure block others
-    await Promise.allSettled(promises);
+    const results = await Promise.allSettled(promises);
+
+    // Log any failures server-side
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error(`Action ${i} failed:`, r.reason);
+      }
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

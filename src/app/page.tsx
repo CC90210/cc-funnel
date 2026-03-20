@@ -8,6 +8,7 @@ interface FormData {
   interests: Interest[];
   name: string;
   email: string;
+  phone: string;
   instagram: string;
   // AI fields
   businessName: string;
@@ -27,6 +28,7 @@ const INITIAL: FormData = {
   interests: [],
   name: "",
   email: "",
+  phone: "",
   instagram: "",
   businessName: "",
   businessType: "",
@@ -353,13 +355,20 @@ export default function FunnelPage() {
                 onChange={(e) => update("email", e.target.value)}
                 className="w-full bg-brand-card border border-brand-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent"
               />
+              <input
+                type="tel"
+                placeholder="Phone number (optional)"
+                value={form.phone}
+                onChange={(e) => update("phone", e.target.value)}
+                className="w-full bg-brand-card border border-brand-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent"
+              />
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted text-sm">
                   @
                 </span>
                 <input
                   type="text"
-                  placeholder="instagram handle"
+                  placeholder="Instagram handle (optional)"
                   value={form.instagram}
                   onChange={(e) =>
                     update("instagram", e.target.value.replace("@", ""))
