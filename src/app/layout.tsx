@@ -10,6 +10,21 @@ export const metadata: Metadata = {
     description:
       "AI automation, music, and personal brand — pick what interests you and get something free.",
     type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "CC McKenna — Free Resources",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CC McKenna — Free Resources",
+    description:
+      "AI automation, music, and personal brand — pick what interests you and get something free.",
+    images: ["/og-image.png"],
   },
 };
 
