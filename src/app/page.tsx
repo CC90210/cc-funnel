@@ -4,6 +4,24 @@ import { useState } from "react";
 
 type Interest = "ai" | "music" | "brand";
 
+type PainPoint =
+  | "lead-followup"
+  | "scheduling"
+  | "data-entry"
+  | "social-media"
+  | "invoicing"
+  | "customer-support"
+  | "email-management"
+  | "other";
+
+type AudienceChip =
+  | "Entrepreneurs"
+  | "Fitness/Wellness"
+  | "Real Estate"
+  | "Local Businesses"
+  | "Creators"
+  | "Other";
+
 interface FormData {
   interests: Interest[];
   name: string;
@@ -13,15 +31,20 @@ interface FormData {
   // AI fields
   businessName: string;
   businessType: string;
-  biggestPain: string;
+  painPoints: PainPoint[];
   // Music fields
   eventType: string;
   eventDate: string;
   musicVibe: string;
   // Brand fields
   brandGoal: string;
-  audience: string;
+  audience: AudienceChip[];
   currentFollowing: string;
+}
+
+interface FieldErrors {
+  name?: string;
+  email?: string;
 }
 
 const INITIAL: FormData = {
@@ -32,12 +55,12 @@ const INITIAL: FormData = {
   instagram: "",
   businessName: "",
   businessType: "",
-  biggestPain: "",
+  painPoints: [],
   eventType: "",
   eventDate: "",
   musicVibe: "",
   brandGoal: "",
-  audience: "",
+  audience: [],
   currentFollowing: "",
 };
 
@@ -62,11 +85,39 @@ const INTERESTS: { id: Interest; label: string; emoji: string; hook: string }[] 
   },
 ];
 
+const PAIN_POINTS: { id: PainPoint; label: string }[] = [
+  { id: "lead-followup", label: "Lead follow-up" },
+  { id: "scheduling", label: "Scheduling" },
+  { id: "data-entry", label: "Data entry" },
+  { id: "social-media", label: "Social media" },
+  { id: "invoicing", label: "Invoicing" },
+  { id: "customer-support", label: "Customer support" },
+  { id: "email-management", label: "Email management" },
+  { id: "other", label: "Other" },
+];
+
+const AUDIENCE_CHIPS: AudienceChip[] = [
+  "Entrepreneurs",
+  "Fitness/Wellness",
+  "Real Estate",
+  "Local Businesses",
+  "Creators",
+  "Other",
+];
+
+function getSubmitLabel(interests: Interest[]): string {
+  if (interests.includes("ai")) return "Send me my free audit";
+  if (interests.includes("brand")) return "Send me my free session";
+  if (interests.includes("music")) return "Send me my free quote";
+  return "Get my free stuff";
+}
+
 export default function FunnelPage() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>(INITIAL);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
 
   const totalSteps = 3;
   const progress = done ? 100 : ((step + 1) / (totalSteps + 1)) * 100;
@@ -87,7 +138,44 @@ export default function FunnelPage() {
     });
   }
 
+  function togglePainPoint(id: PainPoint) {
+    setForm((prev) => {
+      const has = prev.painPoints.includes(id);
+      return {
+        ...prev,
+        painPoints: has
+          ? prev.painPoints.filter((p) => p !== id)
+          : [...prev.painPoints, id],
+      };
+    });
+  }
+
+  function toggleAudience(chip: AudienceChip) {
+    setForm((prev) => {
+      const has = prev.audience.includes(chip);
+      return {
+        ...prev,
+        audience: has
+          ? prev.audience.filter((a) => a !== chip)
+          : [...prev.audience, chip],
+      };
+    });
+  }
+
+  function validateContact(): boolean {
+    const newErrors: FieldErrors = {};
+    if (!form.name.trim()) newErrors.name = "Name is required.";
+    if (!form.email.trim()) {
+      newErrors.email = "Email is required.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      newErrors.email = "Enter a valid email address.";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }
+
   async function handleSubmit() {
+    if (!validateContact()) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/submit", {
@@ -99,7 +187,7 @@ export default function FunnelPage() {
         setDone(true);
       }
     } catch {
-      // Silently handle — the thank-you still shows
+      // Network error — still show thank-you so the user isn't stuck
       setDone(true);
     } finally {
       setSubmitting(false);
@@ -110,13 +198,16 @@ export default function FunnelPage() {
     return (
       <main className="min-h-screen flex items-center justify-center px-4">
         <div className="max-w-md w-full text-center step-enter">
-          <div className="text-5xl mb-6">
+          <div className="text-6xl mb-6 icon-pop inline-block">
             {form.interests.includes("ai") && "⚡"}
             {form.interests.includes("music") && "🎧"}
             {form.interests.includes("brand") && "🔥"}
           </div>
-          <h1 className="text-2xl font-bold mb-3">You&apos;re in, {form.name.split(" ")[0]}.</h1>
-          <p className="text-brand-muted mb-6">
+
+          <h1 className="text-2xl font-bold mb-3">
+            You&apos;re in, {form.name.split(" ")[0]}.
+          </h1>
+          <p className="text-brand-muted mb-8">
             {form.interests.includes("ai") &&
               "Your free AI audit is on its way. I'll personally review your business and send you a breakdown within 48 hours. "}
             {form.interests.includes("music") &&
@@ -124,9 +215,74 @@ export default function FunnelPage() {
             {form.interests.includes("brand") &&
               "I'll DM you on Instagram to book your free strategy session. "}
           </p>
-          <p className="text-sm text-brand-muted">
-            — CC
-          </p>
+
+          {/* Primary CTA: Book a call */}
+          {form.interests.includes("ai") && (
+            <a
+              href={process.env.NEXT_PUBLIC_BOOKING_LINK || "https://calendar.google.com"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full py-4 rounded-xl text-center font-semibold bg-brand-accent text-brand-dark hover:opacity-90 transition mb-5"
+            >
+              Book your free AI audit call
+            </a>
+          )}
+          {form.interests.includes("brand") && !form.interests.includes("ai") && (
+            <a
+              href={process.env.NEXT_PUBLIC_BOOKING_LINK || "https://calendar.google.com"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full py-4 rounded-xl text-center font-semibold bg-brand-accent text-brand-dark hover:opacity-90 transition mb-5"
+            >
+              Book your free strategy session
+            </a>
+          )}
+
+          <div className="border border-brand-border rounded-xl p-5 mb-5 text-left space-y-4">
+            <p className="text-sm font-semibold text-brand-cream">
+              While you wait — what&apos;s next:
+            </p>
+            <a
+              href="https://www.skool.com/agency-accelerants"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 p-3 rounded-lg bg-brand-card hover:bg-[#222] transition group"
+            >
+              <span className="text-xl">🏫</span>
+              <div>
+                <p className="text-sm font-semibold group-hover:text-brand-accent transition">
+                  Join the free Skool community
+                </p>
+                <p className="text-xs text-brand-muted">
+                  Agency Accelerants — free resources, frameworks, and real talk
+                </p>
+              </div>
+              <span className="ml-auto text-brand-muted group-hover:text-brand-accent transition text-sm">
+                →
+              </span>
+            </a>
+            <a
+              href="https://instagram.com/konamakana"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 p-3 rounded-lg bg-brand-card hover:bg-[#222] transition group"
+            >
+              <span className="text-xl">📸</span>
+              <div>
+                <p className="text-sm font-semibold group-hover:text-brand-accent transition">
+                  Follow @konamakana on Instagram
+                </p>
+                <p className="text-xs text-brand-muted">
+                  Daily posts on AI, business, and the build
+                </p>
+              </div>
+              <span className="ml-auto text-brand-muted group-hover:text-brand-accent transition text-sm">
+                →
+              </span>
+            </a>
+          </div>
+
+          <p className="text-sm text-brand-muted">— CC</p>
         </div>
       </main>
     );
@@ -151,12 +307,13 @@ export default function FunnelPage() {
         {/* Step 0: Choose interests */}
         {step === 0 && (
           <div className="step-enter">
+            <p className="micro-label mb-3">✦ Pick your free resource</p>
             <h1 className="text-3xl font-bold mb-2">Hey, I&apos;m CC.</h1>
             <p className="text-brand-muted mb-8">
               Pick what you&apos;re interested in and I&apos;ll hook you up with something free.
             </p>
 
-            <div className="space-y-3 mb-8">
+            <div className="space-y-3 mb-4">
               {INTERESTS.map((item) => {
                 const selected = form.interests.includes(item.id);
                 return (
@@ -170,21 +327,21 @@ export default function FunnelPage() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
+                      <div className={`card-checkbox ${selected ? "checked" : ""}`} />
                       <span className="text-2xl">{item.emoji}</span>
                       <div>
                         <p className="font-semibold">{item.label}</p>
                         <p className="text-sm text-brand-muted">{item.hook}</p>
                       </div>
-                      {selected && (
-                        <span className="ml-auto text-brand-accent text-lg">
-                          ✓
-                        </span>
-                      )}
                     </div>
                   </button>
                 );
               })}
             </div>
+
+            <p className="text-xs text-brand-muted text-center mb-6">
+              Trusted by 50+ local businesses in Ontario
+            </p>
 
             <button
               onClick={() => setStep(1)}
@@ -231,13 +388,29 @@ export default function FunnelPage() {
                     <option value="agency">Agency / Consulting</option>
                     <option value="other">Other</option>
                   </select>
-                  <textarea
-                    placeholder="What's your biggest time-waster right now? (the thing you wish you could automate)"
-                    value={form.biggestPain}
-                    onChange={(e) => update("biggestPain", e.target.value)}
-                    rows={3}
-                    className="w-full bg-brand-card border border-brand-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent resize-none"
-                  />
+                  <div>
+                    <p className="text-xs text-brand-muted mb-2">
+                      What&apos;s your biggest time-waster right now?
+                    </p>
+                    <div className="checkbox-grid">
+                      {PAIN_POINTS.map((point) => {
+                        const checked = form.painPoints.includes(point.id);
+                        return (
+                          <label
+                            key={point.id}
+                            className={`checkbox-item ${checked ? "checked" : ""}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => togglePainPoint(point.id)}
+                            />
+                            {point.label}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </fieldset>
               )}
 
@@ -286,20 +459,31 @@ export default function FunnelPage() {
                     onChange={(e) => update("brandGoal", e.target.value)}
                     className="w-full bg-brand-card border border-brand-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent"
                   >
-                    <option value="">What's your main goal?</option>
+                    <option value="">What&apos;s your main goal?</option>
                     <option value="grow">Grow my audience</option>
                     <option value="monetize">Monetize my brand</option>
                     <option value="launch">Launch a product / service</option>
                     <option value="pivot">Pivot / rebrand</option>
                     <option value="learn">Learn from someone doing it</option>
                   </select>
-                  <input
-                    type="text"
-                    placeholder="Who's your audience? (e.g. entrepreneurs, fitness people)"
-                    value={form.audience}
-                    onChange={(e) => update("audience", e.target.value)}
-                    className="w-full bg-brand-card border border-brand-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent"
-                  />
+                  <div>
+                    <p className="text-xs text-brand-muted mb-2">Who&apos;s your audience?</p>
+                    <div className="chip-group">
+                      {AUDIENCE_CHIPS.map((chip) => {
+                        const selected = form.audience.includes(chip);
+                        return (
+                          <button
+                            key={chip}
+                            type="button"
+                            onClick={() => toggleAudience(chip)}
+                            className={`chip ${selected ? "selected" : ""}`}
+                          >
+                            {chip}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <select
                     value={form.currentFollowing}
                     onChange={(e) => update("currentFollowing", e.target.value)}
@@ -341,20 +525,38 @@ export default function FunnelPage() {
             </p>
 
             <div className="space-y-4">
-              <input
-                type="text"
-                placeholder="Your name"
-                value={form.name}
-                onChange={(e) => update("name", e.target.value)}
-                className="w-full bg-brand-card border border-brand-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent"
-              />
-              <input
-                type="email"
-                placeholder="Email address"
-                value={form.email}
-                onChange={(e) => update("email", e.target.value)}
-                className="w-full bg-brand-card border border-brand-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent"
-              />
+              <div>
+                <input
+                  type="text"
+                  placeholder="Your name *"
+                  value={form.name}
+                  onChange={(e) => {
+                    update("name", e.target.value);
+                    if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
+                  }}
+                  className={`w-full bg-brand-card border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent ${
+                    errors.name ? "border-red-500" : "border-brand-border"
+                  }`}
+                />
+                {errors.name && <p className="field-error">{errors.name}</p>}
+              </div>
+
+              <div>
+                <input
+                  type="email"
+                  placeholder="Email address *"
+                  value={form.email}
+                  onChange={(e) => {
+                    update("email", e.target.value);
+                    if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
+                  }}
+                  className={`w-full bg-brand-card border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent ${
+                    errors.email ? "border-red-500" : "border-brand-border"
+                  }`}
+                />
+                {errors.email && <p className="field-error">{errors.email}</p>}
+              </div>
+
               <input
                 type="tel"
                 placeholder="Phone number (optional)"
@@ -362,19 +564,25 @@ export default function FunnelPage() {
                 onChange={(e) => update("phone", e.target.value)}
                 className="w-full bg-brand-card border border-brand-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand-accent"
               />
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted text-sm">
-                  @
-                </span>
-                <input
-                  type="text"
-                  placeholder="Instagram handle (optional)"
-                  value={form.instagram}
-                  onChange={(e) =>
-                    update("instagram", e.target.value.replace("@", ""))
-                  }
-                  className="w-full bg-brand-card border border-brand-border rounded-lg pl-8 pr-4 py-3 text-sm focus:outline-none focus:border-brand-accent"
-                />
+
+              <div>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted text-sm">
+                    @
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Instagram handle"
+                    value={form.instagram}
+                    onChange={(e) =>
+                      update("instagram", e.target.value.replace("@", ""))
+                    }
+                    className="instagram-field w-full bg-brand-card border rounded-lg pl-8 pr-4 py-3 text-sm focus:outline-none"
+                  />
+                </div>
+                <p className="text-xs text-brand-accent mt-1.5">
+                  I&apos;ll personally DM you within 24 hours.
+                </p>
               </div>
             </div>
 
@@ -387,10 +595,10 @@ export default function FunnelPage() {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={!form.name || !form.email || submitting}
+                disabled={submitting}
                 className="btn-primary flex-1 py-3 rounded-xl text-center"
               >
-                {submitting ? "Sending..." : "Get my free stuff"}
+                {submitting ? "Sending..." : getSubmitLabel(form.interests)}
               </button>
             </div>
           </div>
@@ -398,9 +606,7 @@ export default function FunnelPage() {
       </div>
 
       {/* Footer */}
-      <p className="text-xs text-brand-muted mt-12">
-        Built by CC McKenna
-      </p>
+      <p className="text-xs text-brand-muted mt-12">Built by CC McKenna</p>
     </main>
   );
 }
